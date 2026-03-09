@@ -1,9 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
-/* ─────────────────────────────────────────
-   SLIDE DATA
-───────────────────────────────────────── */
 const SLIDES = [
   {
     id: 1,
@@ -59,9 +56,144 @@ const SLIDES = [
   },
 ];
 
-/* ─────────────────────────────────────────
-   PROGRESS BAR (per slide autoplay)
-───────────────────────────────────────── */
+function FerrisWheelDish({ slides, current, wheelRotation }) {
+  const DISH_SIZE = 300; // px — matches clamp max
+  const R = DISH_SIZE;   // radius: pivot at top, dish hangs R px below
+
+  const slide = slides[current];
+
+  return (
+    <div style={{
+      position: "relative",
+      width: DISH_SIZE,
+      height: DISH_SIZE,
+      overflow: "visible",
+    }}>
+      <motion.div
+        animate={{ rotate: wheelRotation }}
+        transition={{
+          duration: 0.85,
+          ease: [0.77, 0, 0.175, 1], // sharp cubic-bezier = crisp Ferris wheel feel
+        }}
+        style={{
+          position: "absolute",
+          top: "-140%",
+          left: "20%",
+          width: 0,
+          height: 0,
+          transformOrigin: "0 0", // pivot is exactly this point (top-center)
+        }}
+      >
+        {slides.map((s, i) => {
+          /*
+            Spoke angle for slot i (in degrees):
+              Slot 0 → bottom  → 90°  (current visible)
+              Slot 1 → left    → 180° (exits left on next)
+              Slot 2 → top     → 270° (fully hidden above)
+              Slot 3 → right   → 0°   (enters from right on next)
+
+            We assign slots relative to `current` so slot 0 is always
+            the active dish regardless of which slide is showing.
+          */
+          const slotIndex = (i - current + slides.length) % slides.length;
+          // Base angles: bottom=90, left=180, top=270, right=0(360)
+          const BASE_ANGLES = [90, 180, 270, 0];
+          const spokeAngleDeg = BASE_ANGLES[slotIndex];
+          const spokeAngleRad = (spokeAngleDeg * Math.PI) / 180;
+
+          // Position of this dish's CENTER relative to the pivot (0,0)
+          const cx = R * Math.cos(spokeAngleRad); // x offset from pivot
+          const cy = R * Math.sin(spokeAngleRad); // y offset from pivot
+
+          const isActive = i === current;
+
+          return (
+            <div
+              key={s.id}
+              style={{
+                position: "absolute",
+                /*
+                  Place the dish so its CENTER lands at (cx, cy).
+                  Since the dish is DISH_SIZE × DISH_SIZE, offset by half.
+                */
+                left: cx*1.8  - DISH_SIZE  / 2,
+                top:  cy*1.8 - DISH_SIZE / 2,
+                width:  DISH_SIZE,
+                height: DISH_SIZE,
+                /*
+                  Counter-rotate each image by the negative of the wheel rotation
+                  so they always stay upright (like gondolas on a real Ferris wheel).
+                */
+                transform: `rotate(${-wheelRotation}deg)`,
+                transition: `transform 0.85s cubic-bezier(0.77,0,0.175,1)`,
+                transformOrigin: "center center",
+              }}
+            >
+              {/* Outer glow rings — only render for active to keep it clean */}
+              {isActive && (
+                <>
+                  <div style={{
+                    position: "absolute", inset: -16, borderRadius: "50%",
+                    border: `1px solid ${s.accent}30`, pointerEvents: "none",
+                  }} />
+                  <div style={{
+                    position: "absolute", inset: -32, borderRadius: "50%",
+                    border: `1px solid ${s.accent}15`, pointerEvents: "none",
+                  }} />
+                </>
+              )}
+
+              {/* Circle image */}
+              <div style={{
+                width: "100%",
+                height: "100%",
+                borderRadius: "50%",
+                overflow: "hidden",
+                boxShadow: isActive
+                  ? `0 0 0 4px ${s.accent}40, 0 24px 80px rgba(0,0,0,0.7)`
+                  : `0 8px 32px rgba(0,0,0,0.5)`,
+                transition: "box-shadow 0.4s ease",
+              }}>
+                <img
+                  src={s.image}
+                  alt={s.titleBottom}
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
+              </div>
+
+              {/* Rating badge — active dish only */}
+              {isActive && (
+                <div style={{
+                  position: "absolute",
+                  bottom: "8%", right: "-8%",
+                  background: s.accent,
+                  color: "#fff",
+                  borderRadius: "50%",
+                  width: 56, height: 56,
+                  display: "flex", flexDirection: "column",
+                  alignItems: "center", justifyContent: "center",
+                  boxShadow: `0 4px 20px ${s.accent}66`,
+                }}>
+                  <span style={{
+                    fontFamily: "'Bebas Neue', sans-serif",
+                    fontSize: "1.1rem", lineHeight: 1, letterSpacing: "0.04em",
+                  }}>{s.rating}</span>
+                  <span style={{
+                    fontSize: "0.55rem",
+                    fontFamily: "'Rajdhani', sans-serif",
+                    letterSpacing: "0.06em",
+                    color: "rgba(255,255,255,0.75)",
+                  }}>RATED</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </motion.div>
+    </div>
+  );
+}
+
 function ProgressBar({ active, duration = 5000 }) {
   return (
     <div style={{ width: "100%", height: 2, background: "rgba(255,255,255,0.08)", borderRadius: 2, overflow: "hidden" }}>
@@ -78,12 +210,10 @@ function ProgressBar({ active, duration = 5000 }) {
   );
 }
 
-/* ─────────────────────────────────────────
-   MAIN COMPONENT
-───────────────────────────────────────── */
 export default function HeroCarousel({ onSlideChange }) {
   const [current, setCurrent] = useState(0);
   const [playing, setPlaying] = useState(true);
+  const [wheelRotation, setWheelRotation] = useState(0);
   const [touchStart, setTouchStart] = useState(null);
   const [touchEnd, setTouchEnd] = useState(null);
   const intervalRef = useRef(null);
@@ -95,6 +225,8 @@ export default function HeroCarousel({ onSlideChange }) {
       if (onSlideChange) onSlideChange(n);
       return n;
     });
+    // Rotate wheel clockwise: -90° per step (accumulate for smooth multi-step)
+    setWheelRotation((r) => r - 90);
   }, [onSlideChange]);
 
   const prev = useCallback(() => {
@@ -103,9 +235,20 @@ export default function HeroCarousel({ onSlideChange }) {
       if (onSlideChange) onSlideChange(n);
       return n;
     });
+    setWheelRotation((r) => r + 90);
   }, [onSlideChange]);
 
-  const goTo = (i) => { setCurrent(i); if (onSlideChange) onSlideChange(i); };
+  const goTo = useCallback((i) => {
+    setCurrent((prev) => {
+      const diff = i - prev;
+      const steps = ((diff % SLIDES.length) + SLIDES.length) % SLIDES.length;
+      // Take shortest path
+      const clockwise = steps <= SLIDES.length / 2 ? steps : steps - SLIDES.length;
+      setWheelRotation((r) => r - clockwise * 90);
+      if (onSlideChange) onSlideChange(i);
+      return i;
+    });
+  }, [onSlideChange]);
 
   useEffect(() => {
     if (playing) { intervalRef.current = setInterval(next, DURATION); }
@@ -113,8 +256,8 @@ export default function HeroCarousel({ onSlideChange }) {
   }, [playing, next]);
 
   const onTouchStart = (e) => { setTouchEnd(null); setTouchStart(e.targetTouches[0].clientX); };
-  const onTouchMove = (e) => setTouchEnd(e.targetTouches[0].clientX);
-  const onTouchEnd = () => {
+  const onTouchMove  = (e) => setTouchEnd(e.targetTouches[0].clientX);
+  const onTouchEnd   = () => {
     if (!touchStart || !touchEnd) return;
     const d = touchStart - touchEnd;
     if (Math.abs(d) > 50) { d > 0 ? next() : prev(); }
@@ -143,100 +286,43 @@ export default function HeroCarousel({ onSlideChange }) {
         }}
       >
         {/* ── Full-bleed background image ── */}
-        <AnimatePresence mode="wait">
+        <motion.div
+          key={`bg-${current}`}
+          initial={{ opacity: 0, scale: 1.06 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+          style={{ position: "absolute", inset: 0, zIndex: 0 }}
+        >
+          <img
+            src={slide.image}
+            alt={slide.titleBottom}
+            style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", display: "block" }}
+          />
+          <div style={{
+            position: "absolute", inset: 0,
+            background: "linear-gradient(105deg, rgba(10,10,10,0.92) 0%, rgba(10,10,10,0.65) 45%, rgba(10,10,10,0.35) 100%)",
+          }} />
+          <div style={{
+            position: "absolute", bottom: 0, left: 0, right: 0, height: "35%",
+            background: "linear-gradient(to top, rgba(10,10,10,0.95), transparent)",
+          }} />
           <motion.div
-            key={`bg-${current}`}
-            initial={{ opacity: 0, scale: 1.06 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+            key={`glow-${current}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 1 }}
             style={{
-              position: "absolute",
-              inset: 0,
-              zIndex: 0,
+              position: "absolute", inset: 0,
+              background: `radial-gradient(ellipse at 70% 50%, ${slide.accent}18 0%, transparent 60%)`,
+              pointerEvents: "none",
             }}
-          >
-            <img
-              src={slide.image}
-              alt={slide.titleBottom}
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                objectPosition: "center",
-                display: "block",
-              }}
-            />
-            {/* Heavy dark overlay so text is always readable */}
-            <div style={{
-              position: "absolute",
-              inset: 0,
-              background: "linear-gradient(105deg, rgba(10,10,10,0.92) 0%, rgba(10,10,10,0.65) 45%, rgba(10,10,10,0.35) 100%)",
-            }} />
-            {/* Bottom fade */}
-            <div style={{
-              position: "absolute",
-              bottom: 0, left: 0, right: 0,
-              height: "35%",
-              background: "linear-gradient(to top, rgba(10,10,10,0.95), transparent)",
-            }} />
-            {/* Accent color radial glow */}
-            <motion.div
-              key={`glow-${current}`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 1 }}
-              style={{
-                position: "absolute",
-                inset: 0,
-                background: `radial-gradient(ellipse at 70% 50%, ${slide.accent}18 0%, transparent 60%)`,
-                pointerEvents: "none",
-              }}
-            />
-          </motion.div>
-        </AnimatePresence>
-
-        {/* ── Slide counter (top right) ── */}
-        {/* <div style={{
-          position: "absolute",
-          top: "calc(76px + 1.5rem)",
-          right: "clamp(1rem, 5vw, 4rem)",
-          zIndex: 10,
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-        }}>
-          <span style={{
-            fontFamily: "'Bebas Neue', sans-serif",
-            fontSize: "1.6rem",
-            color: "#F5F0E8",
-            lineHeight: 1,
-            letterSpacing: "0.06em",
-          }}>
-            {String(current + 1).padStart(2, "0")}
-          </span>
-          <span style={{
-            fontFamily: "'Rajdhani', sans-serif",
-            fontSize: "0.8rem",
-            color: "rgba(245,240,232,0.3)",
-            letterSpacing: "0.1em",
-          }}>
-            / {String(SLIDES.length).padStart(2, "0")}
-          </span>
-        </div> */}
+          />
+        </motion.div>
 
         {/* ── Vertical dot indicators (left) ── */}
         <div style={{
-          position: "absolute",
-          left: "1.5rem",
-          top: "50%",
-          transform: "translateY(-50%)",
-          zIndex: 10,
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.6rem",
-          alignItems: "center",
+          position: "absolute", left: "1.5rem", top: "50%", transform: "translateY(-50%)",
+          zIndex: 10, display: "flex", flexDirection: "column", gap: "0.6rem", alignItems: "center",
         }}>
           {SLIDES.map((_, i) => (
             <button
@@ -244,13 +330,9 @@ export default function HeroCarousel({ onSlideChange }) {
               onClick={() => goTo(i)}
               aria-label={`Slide ${i + 1}`}
               style={{
-                width: 3,
-                height: i === current ? 32 : 6,
-                borderRadius: 3,
+                width: 3, height: i === current ? 32 : 6, borderRadius: 3,
                 background: i === current ? slide.accent : "rgba(255,255,255,0.2)",
-                border: "none",
-                cursor: "pointer",
-                padding: 0,
+                border: "none", cursor: "pointer", padding: 0,
                 transition: "all 0.35s ease",
               }}
             />
@@ -261,260 +343,129 @@ export default function HeroCarousel({ onSlideChange }) {
         <div
           className="hero-content"
           style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            position: "relative",
-            zIndex: 5,
+            flex: 1, display: "flex", alignItems: "center",
+            position: "relative", zIndex: 5,
             padding: "calc(76px + 2rem) clamp(1rem, 7vw, 6rem) 2rem clamp(3rem, 8vw, 7rem)",
             gap: "3rem",
           }}
         >
           {/* LEFT: Main text */}
           <div style={{ flex: "1 1 0", minWidth: 0 }}>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={`text-${current}`}
-                initial={{ opacity: 0, y: 32 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-              >
-
-                {/* Headline */}
-                <h1 style={{
-                  fontFamily: "'Bebas Neue', sans-serif",
-                  fontSize: "clamp(3.5rem, 8vw, 7.5rem)",
-                  lineHeight: 0.88,
-                  letterSpacing: "0.03em",
-                  color: "#F5F0E8",
-                  margin: 0,
-                  marginBottom: "1.8rem",
-                }}>
-                  {slide.titleTop}<br />
-                  <span style={{ color: slide.accent }}>{slide.titleBottom}</span>
-                </h1>
-
-                {/* CTA buttons */}
-                <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-                  <motion.button
-                    whileHover={{ scale: 1.04, boxShadow: `0 8px 32px ${slide.accent}55` }}
-                    whileTap={{ scale: 0.97 }}
-                    style={{
-                      background: slide.accent,
-                      color: "#fff",
-                      border: "none",
-                      fontFamily: "'Rajdhani', sans-serif",
-                      fontSize: "1rem",
-                      fontWeight: 700,
-                      letterSpacing: "0.16em",
-                      textTransform: "uppercase",
-                      padding: "0.85rem 2.4rem",
-                      borderRadius: "2px",
-                      cursor: "pointer",
-                      boxShadow: `0 4px 24px ${slide.accent}44`,
-                    }}
-                  >
-                    Order Now
-                  </motion.button>
-                  <motion.button
-                    whileHover={{ scale: 1.04 }}
-                    whileTap={{ scale: 0.97 }}
-                    style={{
-                      background: "transparent",
-                      color: "#F5F0E8",
-                      border: "2px solid rgba(255,255,255,0.2)",
-                      fontFamily: "'Rajdhani', sans-serif",
-                      fontSize: "1rem",
-                      fontWeight: 700,
-                      letterSpacing: "0.16em",
-                      textTransform: "uppercase",
-                      padding: "calc(0.85rem - 2px) calc(2.4rem - 2px)",
-                      borderRadius: "2px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    View Menu
-                  </motion.button>
-                </div>
-              </motion.div>
-            </AnimatePresence>
+            <motion.div
+              key={`text-${current}`}
+              initial={{ opacity: 0, y: 32 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <h1 style={{
+                fontFamily: "'Bebas Neue', sans-serif",
+                fontSize: "clamp(3.5rem, 8vw, 7.5rem)",
+                lineHeight: 0.88, letterSpacing: "0.03em",
+                color: "#F5F0E8", margin: 0, marginBottom: "1.8rem",
+              }}>
+                {slide.titleTop}<br />
+                <span style={{ color: slide.accent }}>{slide.titleBottom}</span>
+              </h1>
+              <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+                <motion.button
+                  whileHover={{ scale: 1.04, boxShadow: `0 8px 32px ${slide.accent}55` }}
+                  whileTap={{ scale: 0.97 }}
+                  style={{
+                    background: slide.accent, color: "#fff", border: "none",
+                    fontFamily: "'Rajdhani', sans-serif", fontSize: "1rem",
+                    fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase",
+                    padding: "0.85rem 2.4rem", borderRadius: "2px", cursor: "pointer",
+                    boxShadow: `0 4px 24px ${slide.accent}44`,
+                  }}
+                >Order Now</motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.97 }}
+                  style={{
+                    background: "transparent", color: "#F5F0E8",
+                    border: "2px solid rgba(255,255,255,0.2)",
+                    fontFamily: "'Rajdhani', sans-serif", fontSize: "1rem",
+                    fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase",
+                    padding: "calc(0.85rem - 2px) calc(2.4rem - 2px)",
+                    borderRadius: "2px", cursor: "pointer",
+                  }}
+                >View Menu</motion.button>
+              </div>
+            </motion.div>
           </div>
 
-          {/* CENTER: Dish image circle */}
-          <div style={{
-            flex: "0 0 auto",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }} className="hero-dish">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={`dish-${current}`}
-                initial={{ opacity: 0, scale: 0.78, rotate: -8 }}
-                animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                exit={{ opacity: 0, scale: 0.88, rotate: 8 }}
-                transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-                style={{ position: "relative" }}
-              >
-                {/* Outer glow ring */}
-                <div style={{
-                  position: "absolute",
-                  inset: -16,
-                  borderRadius: "50%",
-                  border: `1px solid ${slide.accent}30`,
-                  pointerEvents: "none",
-                }} />
-                <div style={{
-                  position: "absolute",
-                  inset: -32,
-                  borderRadius: "50%",
-                  border: `1px solid ${slide.accent}15`,
-                  pointerEvents: "none",
-                }} />
-                {/* Circle image */}
-                <div style={{
-                  width: "clamp(200px, 26vw, 340px)",
-                  height: "clamp(200px, 26vw, 340px)",
-                  borderRadius: "50%",
-                  overflow: "hidden",
-                  boxShadow: `
-                    0 0 0 4px ${slide.accent}40,
-                    0 24px 80px rgba(0,0,0,0.7)
-                  `,
-                }}>
-                  <img
-                    src={slide.image}
-                    alt={slide.titleBottom}
-                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                  />
-                </div>
-                {/* Rating badge on circle */}
-                <div style={{
-                  position: "absolute",
-                  bottom: "8%",
-                  right: "-8%",
-                  background: slide.accent,
-                  color: "#fff",
-                  borderRadius: "50%",
-                  width: 56,
-                  height: 56,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  boxShadow: `0 4px 20px ${slide.accent}66`,
-                }}>
-                  <span style={{
-                    fontFamily: "'Bebas Neue', sans-serif",
-                    fontSize: "1.1rem",
-                    lineHeight: 1,
-                    letterSpacing: "0.04em",
-                  }}>{slide.rating}</span>
-                  <span style={{
-                    fontSize: "0.55rem",
-                    fontFamily: "'Rajdhani', sans-serif",
-                    letterSpacing: "0.06em",
-                    color: "rgba(255,255,255,0.75)",
-                  }}>RATED</span>
-                </div>
-              </motion.div>
-            </AnimatePresence>
+          {/* CENTER: Dish — Ferris wheel */}
+          <div
+            className="hero-dish"
+            style={{
+              flex: "0 0 auto",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              overflow: "visible",
+            }}
+          >
+            <FerrisWheelDish
+              slides={SLIDES}
+              current={current}
+              wheelRotation={wheelRotation}
+            />
           </div>
 
           {/* RIGHT: Info card */}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={`card-${current}`}
-              initial={{ opacity: 0, x: 32 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -16 }}
-              transition={{ duration: 0.55, delay: 0.1 }}
-              className="hero-card"
-              style={{
-                flex: "0 0 auto",
-                width: "clamp(200px, 20vw, 260px)",
-                background: "rgba(20,20,20,0.9)",
-                backdropFilter: "blur(20px)",
-                WebkitBackdropFilter: "blur(20px)",
-                border: "1px solid rgba(255,255,255,0.07)",
-                borderTop: `3px solid ${slide.accent}`,
-                padding: "1.6rem",
-                borderRadius: "0 0 4px 4px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "1.2rem",
-              }}
-            >
-              {/* Card header */}
+          <motion.div
+            key={`card-${current}`}
+            initial={{ opacity: 0, x: 32 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.55, delay: 0.1 }}
+            className="hero-card"
+            style={{
+              flex: "0 0 auto", width: "clamp(200px, 20vw, 260px)",
+              background: "rgba(20,20,20,0.9)",
+              backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+              border: "1px solid rgba(255,255,255,0.07)",
+              borderTop: `3px solid ${slide.accent}`,
+              padding: "1.6rem", borderRadius: "0 0 4px 4px",
+              display: "flex", flexDirection: "column", gap: "1.2rem",
+            }}
+          >
+            <div>
+              <p style={{
+                fontFamily: "'Rajdhani', sans-serif", fontSize: "0.65rem", fontWeight: 700,
+                letterSpacing: "0.2em", textTransform: "uppercase",
+                color: slide.accent, marginBottom: "0.5rem",
+              }}>Dish Overview</p>
+              <h3 style={{
+                fontFamily: "'Bebas Neue', sans-serif", fontSize: "1.5rem",
+                color: "#F5F0E8", lineHeight: 1, letterSpacing: "0.04em",
+              }}>{slide.titleTop} {slide.titleBottom}</h3>
+            </div>
+            <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
+            <p style={{
+              fontFamily: "'Noto Serif SC', serif", fontSize: "0.88rem",
+              fontStyle: "italic", color: "rgba(245,240,232,0.55)", lineHeight: 1.75,
+            }}>"{slide.review}"</p>
+            <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+              <div style={{
+                width: 32, height: 32, background: `${slide.accent}22`,
+                border: `1px solid ${slide.accent}40`, borderRadius: "50%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: "0.85rem", flexShrink: 0,
+              }}>👨‍🍳</div>
               <div>
                 <p style={{
-                  fontFamily: "'Rajdhani', sans-serif",
-                  fontSize: "0.65rem",
-                  fontWeight: 700,
-                  letterSpacing: "0.2em",
-                  textTransform: "uppercase",
-                  color: slide.accent,
-                  marginBottom: "0.5rem",
-                }}>Dish Overview</p>
-                <h3 style={{
-                  fontFamily: "'Bebas Neue', sans-serif",
-                  fontSize: "1.5rem",
-                  color: "#F5F0E8",
-                  lineHeight: 1,
-                  letterSpacing: "0.04em",
-                }}>
-                  {slide.titleTop} {slide.titleBottom}
-                </h3>
+                  fontFamily: "'Rajdhani', sans-serif", fontSize: "0.9rem",
+                  fontWeight: 700, color: "#F5F0E8", letterSpacing: "0.03em", lineHeight: 1,
+                }}>{slide.chef}</p>
+                <p style={{
+                  fontFamily: "'DM Sans', sans-serif", fontSize: "0.72rem",
+                  color: "rgba(245,240,232,0.35)", marginTop: 2,
+                }}>Wokin Kitchen</p>
               </div>
-
-              {/* Divider */}
-              <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
-
-              {/* Review quote */}
-              <p style={{
-                fontFamily: "'Noto Serif SC', serif",
-                fontSize: "0.88rem",
-                fontStyle: "italic",
-                color: "rgba(245,240,232,0.55)",
-                lineHeight: 1.75,
-              }}>"{slide.review}"</p>
-
-              {/* Divider */}
-              <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
-
-              {/* Chef attribution */}
-              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-                <div style={{
-                  width: 32, height: 32,
-                  background: `${slide.accent}22`,
-                  border: `1px solid ${slide.accent}40`,
-                  borderRadius: "50%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "0.85rem",
-                  flexShrink: 0,
-                }}>👨‍🍳</div>
-                <div>
-                  <p style={{
-                    fontFamily: "'Rajdhani', sans-serif",
-                    fontSize: "0.9rem",
-                    fontWeight: 700,
-                    color: "#F5F0E8",
-                    letterSpacing: "0.03em",
-                    lineHeight: 1,
-                  }}>{slide.chef}</p>
-                  <p style={{
-                    fontFamily: "'DM Sans', sans-serif",
-                    fontSize: "0.72rem",
-                    color: "rgba(245,240,232,0.35)",
-                    marginTop: 2,
-                  }}>Wokin Kitchen</p>
-                </div>
-              </div>
-            </motion.div>
-          </AnimatePresence>
+            </div>
+          </motion.div>
         </div>
       </section>
 
@@ -522,21 +473,16 @@ export default function HeroCarousel({ onSlideChange }) {
       <style>{`
         .hero-card { display: flex !important; }
         .hero-dish { display: flex !important; }
-        .hero-thumbs { display: flex !important; }
 
         @media (max-width: 1024px) {
           .hero-card { display: none !important; }
         }
         @media (max-width: 768px) {
           .hero-dish { display: none !important; }
-          .hero-thumbs { gap: 0.4rem !important; }
           .hero-content {
             padding-left: clamp(2.5rem, 8vw, 4rem) !important;
             padding-right: clamp(1rem, 5vw, 2rem) !important;
           }
-        }
-        @media (max-width: 480px) {
-          .hero-thumbs { display: none !important; }
         }
       `}</style>
     </>
