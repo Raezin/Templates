@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
+/* ─────────────────────────────────────────
+   SLIDES
+───────────────────────────────────────── */
 const SLIDES = [
   {
     id: 1,
-    rank: "Most Loved Dish",
     titleTop: "Chicken",
     titleBottom: "Manchurian",
     image: "https://images.unsplash.com/photo-1567188040759-fb8a883dc6d8?q=80&w=1200&auto=format&fit=crop",
@@ -12,12 +14,10 @@ const SLIDES = [
     chef: "Chef Tariq Mehmood",
     review: "A perfect harmony of bold Pakistani spices and the delicate wok technique that defines our kitchen.",
     tag: "Bestseller",
-    tagColor: "#C8102E",
     accent: "#C8102E",
   },
   {
     id: 2,
-    rank: "House Signature",
     titleTop: "Tom Yum",
     titleBottom: "Prawn Soup",
     image: "https://images.unsplash.com/photo-1547592166-23ac45744acd?q=80&w=1200&auto=format&fit=crop",
@@ -25,12 +25,10 @@ const SLIDES = [
     chef: "Chef Ayesha Raza",
     review: "Every bowl tells a story — depth, warmth, and the kind of acidity that lingers beautifully.",
     tag: "Signature",
-    tagColor: "#C9952A",
     accent: "#C9952A",
   },
   {
     id: 3,
-    rank: "Chef's Pick",
     titleTop: "Mongolian",
     titleBottom: "Lamb",
     image: "https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1200&auto=format&fit=crop",
@@ -38,12 +36,10 @@ const SLIDES = [
     chef: "Chef Tariq Mehmood",
     review: "Wok-charred to perfection. The hoisin glaze with scallions is something truly unforgettable.",
     tag: "Chef's Pick",
-    tagColor: "#E8591A",
     accent: "#E8591A",
   },
   {
     id: 4,
-    rank: "New Addition",
     titleTop: "Szechuan",
     titleBottom: "Prawns",
     image: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?q=80&w=1200&auto=format&fit=crop",
@@ -51,86 +47,79 @@ const SLIDES = [
     chef: "Chef Ayesha Raza",
     review: "The numbing heat of Szechuan peppercorn meets the richness of desi spice — a revelation.",
     tag: "New",
-    tagColor: "#C9952A",
     accent: "#C9952A",
   },
 ];
 
-function FerrisWheelDish({ slides, current, wheelRotation }) {
-  const DISH_SIZE = 300; // px — matches clamp max
-  const R = DISH_SIZE;   // radius: pivot at top, dish hangs R px below
+/*
+  ANIMATION TIMING (ms)
+  ─────────────────────
+  Phase 1 — text/card fade OUT          : 300ms
+  Phase 2 — wheel rotates               : 750ms   (after 300ms delay)
+  Phase 3 — text/card fade IN           : 400ms   (after wheel lands, +100ms cushion)
 
-  const slide = slides[current];
+  Total cycle before text appears again : 300 + 750 + 100 = 1150ms
+*/
+const T_OUT    = 300;   // text fade-out duration
+const T_WHEEL  = 750;   // wheel rotation duration
+const T_GAP    = 100;   // cushion between wheel landing and text appearing
+const T_IN     = 400;   // text fade-in duration
+const T_TOTAL  = T_OUT + T_WHEEL + T_GAP; // when to switch `current` + start fade-in
+
+/* ─────────────────────────────────────────
+   FERRIS WHEEL — exact user geometry preserved
+   wheelDeg accumulates monotonically so Framer
+   ALWAYS travels in the same direction.
+───────────────────────────────────────── */
+function FerrisWheelDish({ slides, displayIdx, wheelDeg }) {
+  const DISH_SIZE = 300;
+  const R = DISH_SIZE;
 
   return (
-    <div style={{
-      position: "relative",
-      width: DISH_SIZE,
-      height: DISH_SIZE,
-      overflow: "visible",
-    }}>
+    <div style={{ position: "relative", width: DISH_SIZE, height: DISH_SIZE, overflow: "visible" }}>
       <motion.div
-        animate={{ rotate: wheelRotation }}
-        transition={{
-          duration: 0.85,
-          ease: [0.77, 0, 0.175, 1], // sharp cubic-bezier = crisp Ferris wheel feel
-        }}
+        animate={{ rotate: wheelDeg }}
+        transition={{ duration: T_WHEEL / 1000, ease: [0.77, 0, 0.175, 1] }}
         style={{
           position: "absolute",
           top: "-140%",
           left: "20%",
           width: 0,
           height: 0,
-          transformOrigin: "0 0", // pivot is exactly this point (top-center)
+          transformOrigin: "0 0",
         }}
       >
         {slides.map((s, i) => {
           /*
-            Spoke angle for slot i (in degrees):
-              Slot 0 → bottom  → 90°  (current visible)
-              Slot 1 → left    → 180° (exits left on next)
-              Slot 2 → top     → 270° (fully hidden above)
-              Slot 3 → right   → 0°   (enters from right on next)
-
-            We assign slots relative to `current` so slot 0 is always
-            the active dish regardless of which slide is showing.
+            displayIdx = the slide currently at the BOTTOM spoke.
+            Slot 0 → bottom (90°) — always the visible dish.
+            We assign slots relative to displayIdx.
           */
-          const slotIndex = (i - current + slides.length) % slides.length;
-          // Base angles: bottom=90, left=180, top=270, right=0(360)
-          const BASE_ANGLES = [90, 180, 270, 0];
+          const slotIndex     = (i - displayIdx + slides.length) % slides.length;
+          const BASE_ANGLES   = [90, 180, 270, 0];
           const spokeAngleDeg = BASE_ANGLES[slotIndex];
           const spokeAngleRad = (spokeAngleDeg * Math.PI) / 180;
-
-          // Position of this dish's CENTER relative to the pivot (0,0)
-          const cx = R * Math.cos(spokeAngleRad); // x offset from pivot
-          const cy = R * Math.sin(spokeAngleRad); // y offset from pivot
-
-          const isActive = i === current;
+          const cx = R * Math.cos(spokeAngleRad);
+          const cy = R * Math.sin(spokeAngleRad);
+          const isBottom = i === displayIdx;
 
           return (
             <div
               key={s.id}
               style={{
                 position: "absolute",
-                /*
-                  Place the dish so its CENTER lands at (cx, cy).
-                  Since the dish is DISH_SIZE × DISH_SIZE, offset by half.
-                */
-                left: cx*1.8  - DISH_SIZE  / 2,
-                top:  cy*1.8 - DISH_SIZE / 2,
+                left: cx * 1.8 - DISH_SIZE / 2,
+                top:  cy * 1.8 - DISH_SIZE / 2,
                 width:  DISH_SIZE,
                 height: DISH_SIZE,
-                /*
-                  Counter-rotate each image by the negative of the wheel rotation
-                  so they always stay upright (like gondolas on a real Ferris wheel).
-                */
-                transform: `rotate(${-wheelRotation}deg)`,
-                transition: `transform 0.85s cubic-bezier(0.77,0,0.175,1)`,
+                /* counter-rotate so images stay upright */
+                transform: `rotate(${-wheelDeg}deg)`,
+                transition: `transform ${T_WHEEL}ms cubic-bezier(0.77,0,0.175,1)`,
                 transformOrigin: "center center",
               }}
             >
-              {/* Outer glow rings — only render for active to keep it clean */}
-              {isActive && (
+              {/* glow rings on the bottom dish */}
+              {isBottom && (
                 <>
                   <div style={{
                     position: "absolute", inset: -16, borderRadius: "50%",
@@ -143,33 +132,23 @@ function FerrisWheelDish({ slides, current, wheelRotation }) {
                 </>
               )}
 
-              {/* Circle image */}
               <div style={{
-                width: "100%",
-                height: "100%",
-                borderRadius: "50%",
-                overflow: "hidden",
-                boxShadow: isActive
+                width: "100%", height: "100%",
+                borderRadius: "50%", overflow: "hidden",
+                boxShadow: isBottom
                   ? `0 0 0 4px ${s.accent}40, 0 24px 80px rgba(0,0,0,0.7)`
                   : `0 8px 32px rgba(0,0,0,0.5)`,
-                transition: "box-shadow 0.4s ease",
+                transition: `box-shadow 0.4s ease`,
               }}>
-                <img
-                  src={s.image}
-                  alt={s.titleBottom}
-                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                />
+                <img src={s.image} alt={s.titleBottom}
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
               </div>
 
-              {/* Rating badge — active dish only */}
-              {isActive && (
+              {isBottom && (
                 <div style={{
-                  position: "absolute",
-                  bottom: "8%", right: "-8%",
-                  background: s.accent,
-                  color: "#fff",
-                  borderRadius: "50%",
-                  width: 56, height: 56,
+                  position: "absolute", bottom: "8%", right: "-8%",
+                  background: s.accent, color: "#fff",
+                  borderRadius: "50%", width: 56, height: 56,
                   display: "flex", flexDirection: "column",
                   alignItems: "center", justifyContent: "center",
                   boxShadow: `0 4px 20px ${s.accent}66`,
@@ -179,10 +158,8 @@ function FerrisWheelDish({ slides, current, wheelRotation }) {
                     fontSize: "1.1rem", lineHeight: 1, letterSpacing: "0.04em",
                   }}>{s.rating}</span>
                   <span style={{
-                    fontSize: "0.55rem",
-                    fontFamily: "'Rajdhani', sans-serif",
-                    letterSpacing: "0.06em",
-                    color: "rgba(255,255,255,0.75)",
+                    fontSize: "0.55rem", fontFamily: "'Rajdhani', sans-serif",
+                    letterSpacing: "0.06em", color: "rgba(255,255,255,0.75)",
                   }}>RATED</span>
                 </div>
               )}
@@ -194,83 +171,120 @@ function FerrisWheelDish({ slides, current, wheelRotation }) {
   );
 }
 
-function ProgressBar({ active, duration = 5000 }) {
-  return (
-    <div style={{ width: "100%", height: 2, background: "rgba(255,255,255,0.08)", borderRadius: 2, overflow: "hidden" }}>
-      {active && (
-        <motion.div
-          key={`progress-${active}`}
-          initial={{ width: "0%" }}
-          animate={{ width: "100%" }}
-          transition={{ duration: duration / 1000, ease: "linear" }}
-          style={{ height: "100%", background: "#C8102E", borderRadius: 2 }}
-        />
-      )}
-    </div>
-  );
-}
-
+/* ─────────────────────────────────────────
+   MAIN
+───────────────────────────────────────── */
 export default function HeroCarousel({ onSlideChange }) {
-  const [current, setCurrent] = useState(0);
-  const [playing, setPlaying] = useState(true);
-  const [wheelRotation, setWheelRotation] = useState(0);
-  const [touchStart, setTouchStart] = useState(null);
-  const [touchEnd, setTouchEnd] = useState(null);
-  const intervalRef = useRef(null);
-  const DURATION = 5000;
+  /*
+    `current`    — the slide whose DATA (text/card) is shown
+    `displayIdx` — the slide currently at the bottom spoke of the wheel
+                   (lags behind `current` during the animation sequence)
+    `wheelDeg`   — monotonically accumulates: +90 per next step (clockwise),
+                   -90 per prev step. Never normalised so Framer always knows
+                   the direction and never takes a shortcut the wrong way.
+    `textVisible` — controls whether the left text / right card is shown
+  */
+  const [current,     setCurrent]     = useState(0);
+  const [displayIdx,  setDisplayIdx]  = useState(0);
+  const [wheelDeg,    setWheelDeg]    = useState(0);
+  const [textVisible, setTextVisible] = useState(true);
+  const [touchStart,  setTouchStart]  = useState(null);
+  const [touchEnd,    setTouchEnd]    = useState(null);
 
-  const next = useCallback(() => {
-    setCurrent((p) => {
-      const n = (p + 1) % SLIDES.length;
-      if (onSlideChange) onSlideChange(n);
-      return n;
-    });
-    // Rotate wheel clockwise: -90° per step (accumulate for smooth multi-step)
-    setWheelRotation((r) => r - 90);
+  // Single source of truth for the real current index.
+  // React state is async — reading `current` inside a timer closure gives
+  // a stale value. This ref is always up-to-date and lets us compute the
+  // next index synchronously before any timer fires.
+  const idxRef = useRef(0);
+
+  const busyRef      = useRef(false);
+  const timersRef    = useRef([]);
+  const intervalRef  = useRef(null);
+  const AUTOPLAY_MS  = 5000;
+
+  /* Clear all pending timers */
+  const clearTimers = () => {
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+  };
+
+  const advance = useCallback((direction) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    clearTimers();
+
+    // Compute the target index RIGHT NOW from the ref — always accurate
+    const nextIndex = ((idxRef.current + direction) % SLIDES.length + SLIDES.length) % SLIDES.length;
+
+    // Update ref immediately so rapid calls (autoplay + manual) never drift
+    idxRef.current = nextIndex;
+
+    /* Phase 1: hide text */
+    setTextVisible(false);
+
+    /* Phase 2: rotate wheel — dish visuals stay on old dish during spin */
+    const t1 = setTimeout(() => {
+      setWheelDeg((d) => d - direction * 90);
+    }, T_OUT);
+
+    /* Phase 3: wheel landed — flip to new dish, reveal text */
+    const t2 = setTimeout(() => {
+      setCurrent(nextIndex);
+      if (onSlideChange) onSlideChange(nextIndex);
+      setTextVisible(true);
+      busyRef.current = false;
+    }, T_TOTAL);
+
+    timersRef.current = [t1, t2];
   }, [onSlideChange]);
 
-  const prev = useCallback(() => {
-    setCurrent((p) => {
-      const n = (p - 1 + SLIDES.length) % SLIDES.length;
-      if (onSlideChange) onSlideChange(n);
-      return n;
-    });
-    setWheelRotation((r) => r + 90);
-  }, [onSlideChange]);
+  const next = useCallback(() => advance(+1), [advance]);
+  const prev = useCallback(() => advance(-1), [advance]);
 
   const goTo = useCallback((i) => {
-    setCurrent((prev) => {
-      const diff = i - prev;
-      const steps = ((diff % SLIDES.length) + SLIDES.length) % SLIDES.length;
-      // Take shortest path
-      const clockwise = steps <= SLIDES.length / 2 ? steps : steps - SLIDES.length;
-      setWheelRotation((r) => r - clockwise * 90);
-      if (onSlideChange) onSlideChange(i);
-      return i;
-    });
-  }, [onSlideChange]);
+    if (i === idxRef.current) return;
+    const fwd = ((i - idxRef.current) % SLIDES.length + SLIDES.length) % SLIDES.length;
+    const bwd = SLIDES.length - fwd;
+    advance(fwd <= bwd ? +1 : -1);
+  }, [advance]);
 
+  /* Autoplay — always on, never paused by hover */
   useEffect(() => {
-    if (playing) { intervalRef.current = setInterval(next, DURATION); }
+    intervalRef.current = setInterval(next, AUTOPLAY_MS);
     return () => clearInterval(intervalRef.current);
-  }, [playing, next]);
+  }, [next]);
 
+  /* Touch swipe */
   const onTouchStart = (e) => { setTouchEnd(null); setTouchStart(e.targetTouches[0].clientX); };
   const onTouchMove  = (e) => setTouchEnd(e.targetTouches[0].clientX);
   const onTouchEnd   = () => {
     if (!touchStart || !touchEnd) return;
     const d = touchStart - touchEnd;
-    if (Math.abs(d) > 50) { d > 0 ? next() : prev(); }
+    if (Math.abs(d) > 50) d > 0 ? next() : prev();
     setTouchStart(null); setTouchEnd(null);
   };
 
   const slide = SLIDES[current];
 
+  const arrowStyle = (accent) => ({
+    width: 44, height: 44,
+    borderRadius: "50%",
+    background: "rgba(10,10,10,0.55)",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
+    border: `1px solid ${accent}55`,
+    color: "#F5F0E8",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    cursor: "pointer",
+    fontSize: "1.3rem",
+    lineHeight: 1,
+    flexShrink: 0,
+    userSelect: "none",
+  });
+
   return (
     <>
       <section
-        onMouseEnter={() => setPlaying(false)}
-        onMouseLeave={() => setPlaying(true)}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
@@ -285,7 +299,7 @@ export default function HeroCarousel({ onSlideChange }) {
           flexDirection: "column",
         }}
       >
-        {/* ── Full-bleed background image ── */}
+        {/* ── Background ── */}
         <motion.div
           key={`bg-${current}`}
           initial={{ opacity: 0, scale: 1.06 }}
@@ -293,11 +307,8 @@ export default function HeroCarousel({ onSlideChange }) {
           transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
           style={{ position: "absolute", inset: 0, zIndex: 0 }}
         >
-          <img
-            src={slide.image}
-            alt={slide.titleBottom}
-            style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", display: "block" }}
-          />
+          <img src={slide.image} alt={slide.titleBottom}
+            style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", display: "block" }} />
           <div style={{
             position: "absolute", inset: 0,
             background: "linear-gradient(105deg, rgba(10,10,10,0.92) 0%, rgba(10,10,10,0.65) 45%, rgba(10,10,10,0.35) 100%)",
@@ -308,8 +319,7 @@ export default function HeroCarousel({ onSlideChange }) {
           }} />
           <motion.div
             key={`glow-${current}`}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             transition={{ duration: 1 }}
             style={{
               position: "absolute", inset: 0,
@@ -319,16 +329,13 @@ export default function HeroCarousel({ onSlideChange }) {
           />
         </motion.div>
 
-        {/* ── Vertical dot indicators (left) ── */}
+        {/* ── Dot indicators ── */}
         <div style={{
           position: "absolute", left: "1.5rem", top: "50%", transform: "translateY(-50%)",
           zIndex: 10, display: "flex", flexDirection: "column", gap: "0.6rem", alignItems: "center",
         }}>
           {SLIDES.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => goTo(i)}
-              aria-label={`Slide ${i + 1}`}
+            <button key={i} onClick={() => goTo(i)} aria-label={`Slide ${i + 1}`}
               style={{
                 width: 3, height: i === current ? 32 : 6, borderRadius: 3,
                 background: i === current ? slide.accent : "rgba(255,255,255,0.2)",
@@ -339,7 +346,7 @@ export default function HeroCarousel({ onSlideChange }) {
           ))}
         </div>
 
-        {/* ── Main content ── */}
+        {/* ── Main layout ── */}
         <div
           className="hero-content"
           style={{
@@ -349,14 +356,17 @@ export default function HeroCarousel({ onSlideChange }) {
             gap: "3rem",
           }}
         >
-          {/* LEFT: Main text */}
+          {/* LEFT: text — fades out then in as a unit */}
           <div style={{ flex: "1 1 0", minWidth: 0 }}>
             <motion.div
-              key={`text-${current}`}
-              initial={{ opacity: 0, y: 32 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+              animate={{
+                opacity: textVisible ? 1 : 0,
+                y: textVisible ? 0 : -16,
+              }}
+              transition={{
+                duration: textVisible ? T_IN / 1000 : T_OUT / 1000,
+                ease: [0.16, 1, 0.3, 1],
+              }}
             >
               <h1 style={{
                 fontFamily: "'Bebas Neue', sans-serif",
@@ -367,7 +377,8 @@ export default function HeroCarousel({ onSlideChange }) {
                 {slide.titleTop}<br />
                 <span style={{ color: slide.accent }}>{slide.titleBottom}</span>
               </h1>
-              <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+
+              <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "center" }}>
                 <motion.button
                   whileHover={{ scale: 1.04, boxShadow: `0 8px 32px ${slide.accent}55` }}
                   whileTap={{ scale: 0.97 }}
@@ -379,6 +390,7 @@ export default function HeroCarousel({ onSlideChange }) {
                     boxShadow: `0 4px 24px ${slide.accent}44`,
                   }}
                 >Order Now</motion.button>
+
                 <motion.button
                   whileHover={{ scale: 1.04 }}
                   whileTap={{ scale: 0.97 }}
@@ -391,35 +403,55 @@ export default function HeroCarousel({ onSlideChange }) {
                     borderRadius: "2px", cursor: "pointer",
                   }}
                 >View Menu</motion.button>
+
+                {/* Prev / Next arrows */}
+                <div style={{ display: "flex", gap: "0.5rem", marginLeft: "0.25rem" }}>
+                  <motion.button
+                    onClick={prev}
+                    whileHover={{ scale: 1.1, background: `${slide.accent}22`, borderColor: slide.accent }}
+                    whileTap={{ scale: 0.93 }}
+                    aria-label="Previous"
+                    style={arrowStyle(slide.accent)}
+                  >‹</motion.button>
+                  <motion.button
+                    onClick={next}
+                    whileHover={{ scale: 1.1, background: `${slide.accent}22`, borderColor: slide.accent }}
+                    whileTap={{ scale: 0.93 }}
+                    aria-label="Next"
+                    style={arrowStyle(slide.accent)}
+                  >›</motion.button>
+                </div>
               </div>
             </motion.div>
           </div>
 
-          {/* CENTER: Dish — Ferris wheel */}
+          {/* CENTER: Ferris wheel — always visible, never fades */}
           <div
             className="hero-dish"
             style={{
               flex: "0 0 auto",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
+              display: "flex", alignItems: "center", justifyContent: "center",
               overflow: "visible",
             }}
           >
             <FerrisWheelDish
               slides={SLIDES}
-              current={current}
-              wheelRotation={wheelRotation}
+              displayIdx={displayIdx}
+              wheelDeg={wheelDeg}
             />
           </div>
 
-          {/* RIGHT: Info card */}
+          {/* RIGHT: info card — fades with text */}
           <motion.div
-            key={`card-${current}`}
-            initial={{ opacity: 0, x: 32 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.55, delay: 0.1 }}
             className="hero-card"
+            animate={{
+              opacity: textVisible ? 1 : 0,
+              x: textVisible ? 0 : 16,
+            }}
+            transition={{
+              duration: textVisible ? T_IN / 1000 : T_OUT / 1000,
+              ease: [0.16, 1, 0.3, 1],
+            }}
             style={{
               flex: "0 0 auto", width: "clamp(200px, 20vw, 260px)",
               background: "rgba(20,20,20,0.9)",
@@ -469,11 +501,9 @@ export default function HeroCarousel({ onSlideChange }) {
         </div>
       </section>
 
-      {/* ── Responsive CSS ── */}
       <style>{`
         .hero-card { display: flex !important; }
         .hero-dish { display: flex !important; }
-
         @media (max-width: 1024px) {
           .hero-card { display: none !important; }
         }

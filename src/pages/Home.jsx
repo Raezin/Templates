@@ -1,10 +1,8 @@
 import { useRef } from "react";
 import { motion, useInView } from "framer-motion";
-import HeroCarousel from "../components/HeroCarousel";
+import DishCarousel from "../components/DishCarousel";
+import Hero from "../components/Hero";
 
-/* ─────────────────────────────────────────
-   DATA
-───────────────────────────────────────── */
 const SIGNATURES = [
   {
     name: "Chicken Manchurian",
@@ -1014,18 +1012,19 @@ export default function Home({ setPage }) {
         }
       `}</style>
 
-      <HeroCarousel onSlideChange={(index) => console.log("Slide:", index)} />
+      <Hero/>
       <StatsSection />
-      <SignaturesSection setPage={setPage} />
+      <DishCarousel onSlideChange={(index) => console.log("Slide:", index)} />
+      {/* <SignaturesSection setPage={setPage} /> */}
 
       {/* Fire divider */}
-      <div style={{ background: "#141414", padding: "0 clamp(1rem, 7vw, 6rem)" }}>
+      {/* <div style={{ background: "#141414", padding: "0 clamp(1rem, 7vw, 6rem)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem", margin: "3rem 0" }}>
           <div style={{ flex: 1, height: 1, background: "linear-gradient(to right, transparent, rgba(200,16,46,0.4))" }} />
           <span style={{ fontSize: "1.4rem" }}>🔥</span>
           <div style={{ flex: 1, height: 1, background: "linear-gradient(to left, transparent, rgba(200,16,46,0.4))" }} />
         </div>
-      </div>
+      </div> */}
 
       <ExperienceSection />
       <FamilyMealsBanner setPage={setPage} />
